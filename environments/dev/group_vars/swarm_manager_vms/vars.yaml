@@ -1,0 +1,24 @@
+#swarm_networks:
+#  - copo-backend-network
+#  - copo-frontend-network
+#  - common-network
+swarm_secrets:
+  copo_bioimage_path: "{{vault_copo_bioimage_path}}"
+  copo_mail_password: "{{vault_copo_mail_password}}"
+  copo_mongo_user_password: "{{vault_copo_mongo_user_password}}"
+  copo_nih_api_key: "{{vault_copo_nih_api_key}}"
+  copo_orcid_client_id: "{{vault_copo_orcid_client_id}}"
+  copo_orcid_secret_key: "{{vault_copo_orcid_secret_key}}"
+  copo_postgres_user_password: "{{vault_copo_postgres_user_password}}"
+  copo_public_name_service_api_key: "{{vault_copo_public_name_service_api_key}}"
+  copo_web_secret_key: "{{vault_copo_web_secret_key}}"
+  copo_webin_user: "{{vault_copo_webin_user}}"
+  copo_webin_user_password: "{{vault_copo_webin_user_password}}"
+  ecs_secret_key: "{{vault_ecs_secret_key}}"
+  ecs_access_key: "{{vault_ecs_access_key}}"
+  copo_mongo_initdb_root_password: "{{vault_copo_mongo_initdb_root_password}}"
+  minio_access_key: "{{vault_minio_access_key}}"
+  minio_secret_key: "{{vault_minio_secret_key}}"
+swarm_certificate_secrets:
+  copo_project.crt: "{{vault_copo_project_crt}}"
+  copo_project.key: "{{vault_copo_project_key}}"

@@ -1,0 +1,195 @@
+#add route to individual vm manually
+#add copo.compose.yaml to the root of the project
+#ansible-galaxy collection install -r requirements.yml
+#ansible-playbook -vv copo-playbook.yml -i environments/dev/hosts
+
+- name: Initial setup
+  hosts: all_vms
+  become: true
+  tasks:
+    - name: Upgrade all packages
+      ansible.builtin.package:
+        name: "*"
+        state: latest
+        update_cache: yes
+    - name: Install various packages
+      ansible.builtin.package:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - ack-grep
+          - bash-completion
+          - bind9-host
+          - lsb-release
+          - vim
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3-pip
+          - nfs-common
+          - davfs2
+          - net-tools 
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+    - name: Install docker
+      ansible.builtin.package:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - docker-ce
+          - docker-ce-cli
+    - name: Start dockerd
+      ansible.builtin.service:
+        name: "docker"
+        enabled: true
+        state: restarted
+    - name: Install python lib for ansible docker module
+      ansible.builtin.pip:
+         name: 
+          - docker
+          - jsondiff
+          - pyyaml
+         state: present
+         break_system_packages: true   
+
+    #- name: cgroup
+    #  ansible.builtin.shell: |
+    #    # cgroup v2: enable nesting
+    #    if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+    #       # move the processes from the root group to the /init group,
+    #       # otherwise writing subtree_control fails with EBUSY.
+    #       # An error during moving non-existent process (i.e., "cat") is ignored.
+    #       mkdir -p /sys/fs/cgroup/init
+    #       xargs -rn1 < /sys/fs/cgroup/cgroup.procs > /sys/fs/cgroup/init/cgroup.procs || :
+    #       # enable controllers
+    #       sed -e 's/ / +/g' -e 's/^/+/' < /sys/fs/cgroup/cgroup.controllers \
+    #       	> /sys/fs/cgroup/cgroup.subtree_control
+    #    fi 
+    
+    #do it manually
+    #- name: Add route
+    #  community.general.nmcli:
+    #     type: ethernet
+    #     conn_name: 'eth1'   
+    #     routes4:
+    #       - 10.12.1.0/26 10.0.72.111
+    #     state: present
+
+    - name: Add mount point
+      ansible.posix.mount:
+        src: "{{ mount['remote_path'] }}"
+        path: "{{ mount['local_path'] }}"
+        opts: "rw,vers=3"
+        fstype: nfs
+        state: mounted
+ 
+    - name: mount b2drop
+      ansible.builtin.shell: |
+        if [ ! -d /app/copo/ERGA/ERGA ]; then
+          mkdir -p /app/copo/ERGA
+          echo "https://b2drop.eudat.eu/remote.php/webdav/      {{ vault_b2drop_user_id}}    {{ vault_b2drop_password }}" > /app/copo/b2drop_secrets
+          chmod 600 /app/copo/b2drop_secrets
+          echo "secrets         /app/copo/b2drop_secrets # user config file only" > /app/copo/davfs2.conf
+          mount.davfs https://b2drop.eudat.eu/remote.php/webdav/ /app/copo/ERGA -o conf="/app/copo/davfs2.conf"
+          echo mount.davfs https://b2drop.eudat.eu/remote.php/webdav/ /app/copo/ERGA -o conf="/app/copo/davfs2.conf" >> /etc/rc.local
+        fi
+      when: "'service_vms' in group_names and  is_production  "
+
+    - name: Populate service facts
+      ansible.builtin.service_facts:
+
+    - name: install local-persist plugin
+      ansible.builtin.shell: |
+        curl -fsSL https://raw.githubusercontent.com/MatchbookLab/local-persist/v1.2.3/scripts/install.sh | sudo bash
+      when: "ansible_facts['services']['docker-volume-local-persist.service']['status'] | default('not-found') == 'not-found'"
+      
+
+    - name: Initial swarm manager
+      community.docker.docker_swarm:
+         state: present
+      when: "'swarm_manager_vms' in group_names " 
+      register: sm_init_result   
+
+    - name: join swarm
+      community.docker.docker_swarm:
+        state: join
+        advertise_addr: "{{ inventory_hostname }}"
+        join_token: "{{ hostvars[groups['swarm_manager_vms'][0]]['sm_init_result']['swarm_facts']['JoinTokens']['Worker'] }}"
+        remote_addrs: ["{{ hostvars[groups['swarm_manager_vms'][0]]['ansible_eth0']['ipv4']['address'] + ':2377' }}"]
+      when: "'swarm_workers_vms' in group_names"
+
+    - name: createVolume
+      community.docker.docker_volume:
+        name: "{{item.key}}"
+        driver:  "local-persist"
+        driver_options: 
+           mountpoint: "{{item.value}}"
+      loop: "{{ (volumes|default({}))  | dict2items }}"
+
+
+- name: task for sm
+  hosts: swarm_manager_vms
+  become: true
+  tasks:
+  - name: add frontend vm label
+    community.docker.docker_node:
+      hostname: "{{ item }}" 
+      labels: 
+         web-service: "true"
+         nginx-service: "true"
+         minio-service: "true"
+    loop: "{{ groups['frontend_vms'] }}"    
+  - name: add service vm label
+    community.docker.docker_node:
+      hostname: "{{ item }}"
+      labels:
+         postgres-service: "true"
+         backup-service: "true" 
+         offline-service: "true"
+         minio-service: "true"
+    loop: "{{ groups['service_vms'] }}"
+  - name: add swarm manager vm label
+    community.docker.docker_node:
+      hostname: "{{ item }}"
+      labels:
+         mongo-service: "true"
+    loop: "{{ groups['swarm_manager_vms'] }}"
+ 
+  - name: add external network 
+    community.docker.docker_network:
+      name: "{{ item }}"
+      scope: "swarm"
+      driver: "overlay"
+    loop: "{{ swarm_networks |default([]) }}"
+  - name: add secrets
+    community.docker.docker_secret:
+      name: "{{ item.key }}"
+      data: "{{ item.value }}"
+      state: present
+    loop: "{{ swarm_secrets | dict2items }}"
+    no_log: true
+  - name: add certificate secrets
+    community.docker.docker_secret:
+      name: "{{ item.key | replace('_','-') }}"
+      data: "{{ item.value }}"
+      state: present
+    loop: "{{ swarm_certificate_secrets | dict2items }}"
+    no_log: true
+  - name: copy copo compose file 
+    ansible.builtin.copy:
+      src:  copo.compose.yaml
+      dest: /opt/docker-compose.yml
+  - name: deploy copo
+    community.docker.docker_stack:
+      state: present
+      name: copo
+      compose:
+         - /opt/docker-compose.yml

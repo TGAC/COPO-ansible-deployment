@@ -1,0 +1,5 @@
+volumes:
+  web-data: /mnt/copo-data/dev_copo/web-data
+  logs-data: /mnt/copo-data/dev_copo/logs-data
+  minio-data1: /mnt/copo-data/dev_copo/minio-data1-frontend
+  minio-data2: /mnt/copo-data/dev_copo/minio-data2-frontend

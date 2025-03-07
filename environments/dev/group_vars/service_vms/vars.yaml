@@ -1,0 +1,8 @@
+volumes:
+  web-data: /mnt/copo-data/dev_copo/web-data
+  logs-data: /mnt/copo-data/dev_copo/logs-data
+  b2drop-permits: /app/copo/ERGA/ERGA
+  mongo-backup: /mnt/copo-data/dev_copo/mongo-data
+  postgres-backup: /mnt/copo-data/dev_copo/postgres-data
+  minio-data1: /mnt/copo-data/dev_copo/minio-data1-service
+  minio-data2: /mnt/copo-data/dev_copo/minio-data2-service

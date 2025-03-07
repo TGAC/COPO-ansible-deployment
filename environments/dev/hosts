@@ -1,0 +1,21 @@
+ei-copo-dev-sm ansible_user=kud ansible_python_interpreter=/usr/bin/python3
+ei-copo-dev-frontend ansible_user=kud ansible_python_interpreter=/usr/bin/python3
+ei-copo-dev-service ansible_user=kud ansible_python_interpreter=/usr/bin/python3
+
+[swarm_manager_vms]
+ei-copo-dev-sm
+
+[service_vms]
+ei-copo-dev-service
+
+[frontend_vms]
+ei-copo-dev-frontend
+
+[swarm_workers_vms]
+ei-copo-dev-frontend
+ei-copo-dev-service
+
+[all_vms]
+ei-copo-dev-frontend
+ei-copo-dev-service
+ei-copo-dev-sm
